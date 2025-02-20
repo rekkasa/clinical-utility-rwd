@@ -52,17 +52,31 @@ decision_treat_boot <- data.frame(
   )
 )
 
-match_with_leftout <- function(data, analysis_data, leftout_row_ids) {
+match_with_leftout <- function(data, analysis_data, leftout_row_ids, ...) {
 
-  analysis_data |>
+  disc_decision <- unique(data$treatment)
+  if (length(disc_decision) > 1) stop("More than one decisions in data.")
+  conc_decision <- (!disc_decision) * 1
+
+  estimand <- ifelse(disc_decision == 1, "ATT", "ATC")
+
+  combined_data <- analysis_data |>
     dplyr::filter(
       rowId %in% leftout_row_ids,
-      treatment == 1
+      treatment == conc_decision
     ) |>
-    dplyr::bind_rows(data) |>
-    dplyr::mutate(propensityScore = plogis(fitted_ps)) |>
-    CohortMethod::matchOnPs() |> dim()
-  
+    dplyr::bind_rows(data)
+
+  matching <- MatchIt::matchit(
+    treatment ~ fitted_ps,
+    data = combined_data,
+    estimand = estimand,
+    ...
+  )
+  matched_data <- MatchIt::match.data(matching)
+
+  matched_data |>
+    dplyr::filter(treatment == conc_decision)
 }
 
 # ---- DELETE ---->
@@ -70,6 +84,11 @@ match_with_leftout <- function(data, analysis_data, leftout_row_ids) {
 data <- decision_treat_boot |>
   dplyr::left_join(analysis_data, by = "rowId")  |>
   dplyr::filter(treatment == 0)
+
+leftout_row_ids <- setdiff(
+  decision_treat_row_ids,
+  unique(decision_treat_boot$rowId)
+)
 
 # <---- DELETE ----
 
