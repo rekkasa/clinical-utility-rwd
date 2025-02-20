@@ -52,9 +52,18 @@ decision_treat_boot <- data.frame(
   )
 )
 
-match_with_leftout <- function(data, analysis_data, leftout_row_ids, ...) {
+match_with_leftout <- function(
+  disc_row_ids,
+  analysis_data,
+  leftout_row_ids,
+  ...
+) {
 
-  disc_decision <- unique(data$treatment)
+  disc_decision <- analysis_data |>
+    dplyr::filter(rowId %in% disc_row_ids) |>
+    dplyr::pull(treatment) |>
+    unique()
+
   if (length(disc_decision) > 1) stop("More than one decisions in data.")
   conc_decision <- (!disc_decision) * 1
 
@@ -65,7 +74,10 @@ match_with_leftout <- function(data, analysis_data, leftout_row_ids, ...) {
       rowId %in% leftout_row_ids,
       treatment == conc_decision
     ) |>
-    dplyr::bind_rows(data)
+    dplyr::bind_rows(
+      analysis_data |>
+        dplyr::filter(rowId %in% disc_row_ids)
+    )
 
   matching <- MatchIt::matchit(
     treatment ~ fitted_ps,
@@ -76,14 +88,16 @@ match_with_leftout <- function(data, analysis_data, leftout_row_ids, ...) {
   matched_data <- MatchIt::match.data(matching)
 
   matched_data |>
-    dplyr::filter(treatment == conc_decision)
+    dplyr::filter(treatment == conc_decision) |>
+    dplyr::pull(rowId)
 }
 
 # ---- DELETE ---->
 
-data <- decision_treat_boot |>
-  dplyr::left_join(analysis_data, by = "rowId")  |>
-  dplyr::filter(treatment == 0)
+disc_row_ids <- decision_treat_boot |>
+  dplyr::left_join(analysis_data, by = "rowId") |>
+  dplyr::filter(treatment == 0) |>
+  dplyr::pull(rowId)
 
 leftout_row_ids <- setdiff(
   decision_treat_row_ids,
@@ -92,35 +106,34 @@ leftout_row_ids <- setdiff(
 
 # <---- DELETE ----
 
-decision_treat_boot |>
-  dplyr::left_join(analysis_data, by = "rowId")  |>
-  dplyr::group_by(treatment) |>
-  tidyr::nest() |>
-  dplyr::mutate(
-    data = ifelse(
-      treatment == 0,
-      purrr::map(
-        data,
-        ~ match_with_leftout(.x)
-      ),
-      data
-    )
+matched_row_ids <- decision_treat_boot |>
+  dplyr::left_join(
+    analysis_data,
+    by = "rowId"
+  ) |>
+  dplyr::filter(treatment == 0) |>
+  dplyr::pull(rowId) |>
+  match_with_leftout(
+    analysis_data = analysis_data,
+    leftout_row_ids = leftout_row_ids
   )
 
+overall_outcome_conc <- decision_treat_boot |>
+  dplyr::filter(!(rowId %in% disc_row_ids)) |>
+  dplyr::left_join(analysis_data, by = "rowId") |>
+  dplyr::group_by(treatment) |>
+  dplyr::summarise(average_outcome = mean(outcome), n_total = dplyr::n())
 
-# Find matches on PS
+mean_outcome_disc <- data.frame(rowId = matched_row_ids) |>
+  dplyr::left_join(analysis_data) |>
+  pull(outcome) |>
+  mean()
 
+overall_outcome <- data.frame(
+  treatment = 0,
+  average_outcome = mean_outcome_disc,
+  n_total = length(disc_row_ids)
+) |>
+  dplyr::bind_rows(overall_outcome_conc)
 
-# Draw bootstrap sample for decision:no_treat
-
-
-# Find matches on PS
-
-
-# Calculate clinical utility
-
-
-# Calculate true clinical utility
-
-
-# Compare
+sum(overall_outcome$average_outcome * overall_outcome$n_total / sum(overall_outcome$n_total))
