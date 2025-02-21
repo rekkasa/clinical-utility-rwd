@@ -15,7 +15,7 @@ idSettings <- analysisIds |>
   dplyr::filter(scenario == selectedScenario)
 
 databaseSettings <- createDatabaseSettings(
-  numberOfObservations = 1e5,
+  numberOfObservations = 1e6,
   numberOfCovariates = 8,
   covariateDistributionSettings = list(
     createNormalDistributionSettings(),
@@ -84,8 +84,6 @@ simulated_data <- runDataGeneration(
   propensitySettings = propensitySettings,
   treatmentEffectSettings = treatmentEffectSettings
 )
-
-dplyr::glimpse(simulated_data)
 
 message(
   "Difference in outcomes: ",
