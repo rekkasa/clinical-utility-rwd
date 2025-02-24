@@ -13,26 +13,57 @@ match_with_leftout <- function(
 
   estimand <- ifelse(disc_decision == 1, "ATT", "ATC")
 
+  # combined_data <- analysis_data |>
+  #   dplyr::filter(
+  #     rowId %in% leftout_row_ids,
+  #     treatment == decision
+  #   ) |>
+  #   dplyr::bind_rows(
+  #     analysis_data |>
+  #       dplyr::filter(rowId %in% disc_row_ids)
+  #   )
+
   combined_data <- analysis_data |>
     dplyr::filter(
       rowId %in% leftout_row_ids,
-      treatment == conc_decision
+      treatment == decision
     ) |>
     dplyr::bind_rows(
-      analysis_data |>
-        dplyr::filter(rowId %in% disc_row_ids)
+      data.frame(
+        rowId = disc_row_ids
+      ) |>
+        dplyr::left_join(analysis_data, by = "rowId")
     )
 
   matching <- MatchIt::matchit(
     treatment ~ fitted_ps,
+    # treatment ~ x1 + x2 + x3 + x4 + x5 + x6 + x7 + x8 + x9 + x10,
     data = combined_data,
     estimand = estimand,
+    distance = "glm",
+    ratio = 1,
+    replace = TRUE,
+    caliper = .1,
     ...
   )
-  matched_data <- MatchIt::match.data(matching)
+
+  # matched_data <- MatchIt::match.data(matching)
+  matched_data <- MatchIt::get_matches(matching)
+
+
+  # matched_data |>
+  #   dplyr::mutate(
+  #     tt = ifelse(treatment == 1, "treated", "untreated")
+  #   ) |>
+  #   tidyr::pivot_wider(
+  #     names_from = tt,
+  #     values_from = rowId,
+  #     id_cols = subclass
+  #   ) |> 
+  #   dplyr::select(treated_rowId, untreated_rowId)
 
   matched_data |>
-    dplyr::filter(treatment == conc_decision) |>
+    dplyr::filter(treatment == decision) |>
     dplyr::pull(rowId)
 }
 
@@ -101,8 +132,8 @@ calculate_boot_result <- function(
     )
 
   overall_outcome_conc <- decision_boot |>
-    dplyr::filter(!(rowId %in% disc_row_ids)) |>
     dplyr::left_join(data, by = "rowId") |>
+    dplyr::filter(treatment == decision) |>
     dplyr::group_by(treatment) |>
     dplyr::summarise(
       average_outcome = mean(outcome),
@@ -123,7 +154,7 @@ calculate_boot_result <- function(
 
   sum(
     overall_outcome$average_outcome *
-      overall_outcome$n_total /
-      sum(overall_outcome$n_total)
-  )
+      overall_outcome$n_total
+  ) /
+    sum(overall_outcome$n_total)
 }

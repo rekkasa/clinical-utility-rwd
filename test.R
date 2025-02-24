@@ -1,53 +1,53 @@
 #!/usr/bin/env Rscript
 library(SimulateHte)
-analysisIds <- readr::read_csv(
-  "https://raw.githubusercontent.com/mi-erasmusmc/HteSimulationRCT/main/data/processed/analysisIds.csv",
-  col_types =  readr::cols(
-    .default = readr::col_double(),
-    base = readr::col_character(),
-    type = readr::col_character(),
-    harm = readr::col_character()
-  )
-)
+ analysisIds <- readr::read_csv(
+   "https://raw.githubusercontent.com/mi-erasmusmc/HteSimulationRCT/main/data/processed/analysisIds.csv",
+   col_types =  readr::cols(
+     .default = readr::col_double(),
+     base = readr::col_character(),
+     type = readr::col_character(),
+     harm = readr::col_character()
+   )
+ )
 
 selectedScenario <- 217    # This can be any of the possible 648 scenarios
 idSettings <- analysisIds |> 
   dplyr::filter(scenario == selectedScenario)
-
-databaseSettings <- createDatabaseSettings(
-  numberOfObservations = 1e6,
-  numberOfCovariates = 8,
-  covariateDistributionSettings = list(
-    createNormalDistributionSettings(),
-    createNormalDistributionSettings(),
-    createNormalDistributionSettings(),
-    createNormalDistributionSettings(),
-    createBinomialDistributionSettings(prob = .2),
-    createBinomialDistributionSettings(prob = .2),
-    createBinomialDistributionSettings(prob = .2),
-    createBinomialDistributionSettings(prob = .2)
-  )
-)
-
-baselineRiskSettings <- createBaselineRiskSettings(
-  type = "binary",
-  modelSettings = createModelSettings(
-    constant = idSettings$b0,
-    modelMatrix = diag(8),
-    transformationSettings = replicate(n = 8, identity, simplify = FALSE),
-    coefficients = idSettings |> dplyr::select(paste0("b", 1:8)) |> unlist()
-  )
-)
-
-propensitySettings <- createPropensitySettings(
-  type = "binary",
-  modelSettings = createModelSettings(
-    constant = 0,
-    modelMatrix = diag(0),
-    transformationSettings = list(),
-    coefficients = c()
-  )
-)
+# 
+# databaseSettings <- createDatabaseSettings(
+#   numberOfObservations = 1e6,
+#   numberOfCovariates = 8,
+#   covariateDistributionSettings = list(
+#     createNormalDistributionSettings(),
+#     createNormalDistributionSettings(),
+#     createNormalDistributionSettings(),
+#     createNormalDistributionSettings(),
+#     createBinomialDistributionSettings(prob = .2),
+#     createBinomialDistributionSettings(prob = .2),
+#     createBinomialDistributionSettings(prob = .2),
+#     createBinomialDistributionSettings(prob = .2)
+#   )
+# )
+# 
+# baselineRiskSettings <- createBaselineRiskSettings(
+#   type = "binary",
+#   modelSettings = createModelSettings(
+#     constant = idSettings$b0,
+#     modelMatrix = diag(8),
+#     transformationSettings = replicate(n = 8, identity, simplify = FALSE),
+#     coefficients = idSettings |> dplyr::select(paste0("b", 1:8)) |> unlist()
+#   )
+# )
+# 
+# propensitySettings <- createPropensitySettings(
+#   type = "binary",
+#   modelSettings = createModelSettings(
+#     constant = 0,
+#     modelMatrix = diag(0),
+#     transformationSettings = list(),
+#     coefficients = c()
+#   )
+# )
 
 
 # Functions for generating linear, quadratic, and non-monotonic deviations
@@ -61,6 +61,7 @@ createF2 <- function(c) function(x) (x - c)^2
 # where lp1 is the true linear predictor in the treatment arm and
 # lp0 is the true linear predictor in the control arm (see paper)
 
+settings <- readRDS("data/processed/leacySettings.rds")
 treatmentEffectSettings <- createTreatmentEffectSettings(
   type = "lp",
   harm = 0,
@@ -78,18 +79,4 @@ treatmentEffectSettings <- createTreatmentEffectSettings(
   )
 )
 
-simulated_data <- runDataGeneration(
-  databaseSettings = databaseSettings,
-  baselineRiskSettings = baselineRiskSettings,
-  propensitySettings = propensitySettings,
-  treatmentEffectSettings = treatmentEffectSettings
-)
-
-message(
-  "Difference in outcomes: ",
-  mean(simulated_data$outcomeUntreated) - mean(simulated_data$outcomeTreated)
-)
-message(
-  "Average true benefit: ",
-  mean(simulated_data$trueBenefit)
-)
+settings$treatmentEffectSettings <- treatmentEffectSettings
