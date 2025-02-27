@@ -1,18 +1,18 @@
 source("test.R")
 source("helper.R")
-future::plan(future::multisession, workers = 12)
+future::plan(future::multisession, workers = 15)
 
-cutoff_value <- .1
+cutoff_value <- .05
 
 # Estimate propensity scores and risk
-settings$databaseSettings$numberOfObservations <- 1e5
+settings$databaseSettings$numberOfObservations <- 2e4
 
 analysis_data <- SimulateHte::runDataGeneration(
   databaseSettings = settings$databaseSettings,
   propensitySettings = settings$propensitySettings,
   baselineRiskSettings = settings$baselineRiskSettings,
   treatmentEffectSettings = settings$treatmentEffectSettings
-) |> 
+) |>
   dplyr::select(
     rowId,
     paste0("x", 1:10),
@@ -60,11 +60,11 @@ analysis_data <- analysis_data |>
 
 clinical_utility_treat <- analysis_data |>
   dplyr::filter(decision == 1) |>
-  compute_sth(n_boot = 500)
+  compute_sth(n_boot = 200)
 
 clinical_utility_no_treat <- analysis_data |>
   dplyr::filter(decision == 0) |>
-  compute_sth(n_boot = 500)
+  compute_sth(n_boot = 200)
 
 threshold_clinical_utility <-
   mean(analysis_data$decision) * clinical_utility_treat +
