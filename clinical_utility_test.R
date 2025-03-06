@@ -5,108 +5,96 @@ future::plan(future::multisession, workers = 15)
 cutoff_value <- .05
 
 # Estimate propensity scores and risk
-settings$databaseSettings$numberOfObservations <- 2e4
-
-analysis_data <- SimulateHte::runDataGeneration(
-  databaseSettings = settings$databaseSettings,
-  propensitySettings = settings$propensitySettings,
-  baselineRiskSettings = settings$baselineRiskSettings,
-  treatmentEffectSettings = settings$treatmentEffectSettings
-) |>
-  dplyr::select(
-    rowId,
-    paste0("x", 1:10),
-    treatment, outcome,
-    outcomeTreated, outcomeUntreated
-  )
-
-ps_model <- glm(
-  treatment ~ x1 + x2 + x3 + x4 + x5 + x6 + x7 + x8 + x9 + x10,
-  family = "binomial",
-  data = analysis_data
-)
-
-risk_model <- glm(
-  outcome ~ x1 + x2 + x3 + x4 + x5 + x6 + x7 + x8 + x9 + x10,
-  family = "binomial",
-  data = analysis_data
-)
-
-analysis_data <- analysis_data |>
-  dplyr::mutate(
-    fitted_risk = risk_model$linear.predictors,
-    decision = as.numeric(plogis(fitted_risk) > cutoff_value)
-  )
-
-# Re-estimate PS for each decision group
-analysis_data <- analysis_data |>
-  dplyr::group_by(decision) |>
-  tidyr::nest() |>
-  dplyr::mutate(
-    data = purrr::map(
-      data,
-      ~ dplyr::mutate(
-        .x,
-        fitted_ps = glm(
-          treatment ~ x1 + x2 + x3 + x4 + x5 + x6 + x7 + x8 + x9 + x10,
-          family = "binomial",
-          data = .x
-        )$linear.predictors
-      )
-    )
-  ) |>
-  dplyr::ungroup(decision) |>
-  tidyr::unnest(data)
-
-clinical_utility_treat <- analysis_data |>
-  dplyr::filter(decision == 1) |>
-  compute_sth(n_boot = 200)
-
-clinical_utility_no_treat <- analysis_data |>
-  dplyr::filter(decision == 0) |>
-  compute_sth(n_boot = 200)
-
-threshold_clinical_utility <-
-  mean(analysis_data$decision) * clinical_utility_treat +
-  (1 - mean(analysis_data$decision)) * clinical_utility_no_treat
-
-threshold_cu <- mean(analysis_data$outcome) - threshold_clinical_utility
-
-message(
-  "Threshold CU: ",
-  threshold_cu
-)
+settings$databaseSettings$numberOfObservations <- 1e4
 
 population <- readRDS("data/raw/population.rds")
+message("Read population")
 
-population <- population |>
-  dplyr::mutate(
-    fitted_risk = predict(
-      risk_model,
-      newdata = population,
-      type = "response"
-    ),
-    decision = ifelse(fitted_risk > cutoff_value, 1, 0)
+n_replications <- 50
+threshold_cu <- true_threshold_cu <- c(0, n_replications)
+
+for (i in 1:n_replications) {
+
+  message(paste("Starting analysis:", i))
+  analysis_data <- SimulateHte::runDataGeneration(
+    databaseSettings = settings$databaseSettings,
+    propensitySettings = settings$propensitySettings,
+    baselineRiskSettings = settings$baselineRiskSettings,
+    treatmentEffectSettings = settings$treatmentEffectSettings
+  ) |>
+    dplyr::select(
+      rowId,
+      paste0("x", 1:10),
+      treatment, outcome,
+      outcomeTreated, outcomeUntreated
+    )
+
+  ps_model <- glm(
+    treatment ~ x1 + x2 + x3 + x4 + x5 + x6 + x7 + x8 + x9 + x10,
+    family = "binomial",
+    data = analysis_data
   )
 
-true_threshold_clinical_utility <- mean(
-  population$decision * population$outcomeTreated +
-    (1 - population$decision) * population$outcomeUntreated
-)
+  risk_model <- glm(
+    outcome ~ x1 + x2 + x3 + x4 + x5 + x6 + x7 + x8 + x9 + x10,
+    family = "binomial",
+    data = analysis_data
+  )
 
-true_threshold_cu <- mean(population$outcome) - true_threshold_clinical_utility
-message(
-  "True threshold CU: ",
-  true_threshold_cu
-)
+  analysis_data <- analysis_data |>
+    dplyr::mutate(
+      fitted_risk = risk_model$linear.predictors,
+      decision = as.numeric(plogis(fitted_risk) > cutoff_value)
+    )
 
-message(
-  "Deviation from the truth: ",
-  paste0(
-    100 * round(
-    (abs(threshold_cu - true_threshold_cu) / true_threshold_cu),
-    digits = 4
-    ),
-    "%"
+  message("Computing clinical utility for decision: treat")
+
+  clinical_utility_treat <- analysis_data |>
+    dplyr::filter(decision == 1) |>
+    bootstrap_clinical_utility(n_boot = 300)
+
+
+  message("\nComputing clinical utility for decision: no treat")
+
+  clinical_utility_no_treat <- analysis_data |>
+    dplyr::filter(decision == 0) |>
+    bootstrap_clinical_utility(n_boot = 300)
+
+
+  threshold_clinical_utility <-
+    mean(analysis_data$decision) * clinical_utility_treat +
+    (1 - mean(analysis_data$decision)) * clinical_utility_no_treat
+
+  threshold_cu[i] <- mean(analysis_data$outcome) - threshold_clinical_utility
+
+  message("\nComputed clinical utility for proposed rule")
+
+  population <- population |>
+    dplyr::mutate(
+      fitted_risk = predict(
+        risk_model,
+        newdata = population,
+        type = "response"
+      ),
+      decision = ifelse(fitted_risk > cutoff_value, 1, 0)
+    )
+
+  true_threshold_clinical_utility <- mean(
+    population$decision * population$outcomeTreated +
+      (1 - population$decision) * population$outcomeUntreated
+  )
+
+  true_threshold_cu[i] <- mean(population$outcome) - true_threshold_clinical_utility
+  message("Computed true clinical utility for proposed rule")
+
+}
+
+
+message("Saving results")
+readr::write_csv(
+  x = data.frame(boot_all = threshold_cu, actual = true_threshold_cu),
+  file = file.path(
+    "data/processed",
+    paste0("boot_all", ".csv")
   )
 )
