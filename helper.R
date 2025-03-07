@@ -1,24 +1,22 @@
 bootstrap_clinical_utility <- function(
   data,
   n_boot = 50,
-  bootstrap = "all"
+  bootstrap = "all",
+  rule_decision
 ) {
-
-  decision <- unique(data$decision)
-  if (length(decision) > 1) {
-    stop("More than one decisions")
-  }
-  conc_treatment <- decision
-  disc_treatment <- (!decision) * 1
-
-  n_decision <- nrow(data)
 
   res <- rep(0, n_boot)
 
   res <- furrr::future_map_dbl(1:n_boot, ~ {
     data |>
-      calculate_boot_result(bootstrap = bootstrap)
-  }, .progress = TRUE)
+      calculate_boot_result(
+        bootstrap = bootstrap,
+        rule_decision = rule_decision
+      )
+  },
+  .progress = TRUE,
+  .options = furrr::furrr_options(seed = TRUE)
+  )
 
   return(mean(res))
 
@@ -27,10 +25,15 @@ bootstrap_clinical_utility <- function(
 calculate_boot_result <- function(
   data,
   bootstrap = "all",
+  rule_decision,
   ...
 ) {
 
   if (bootstrap == "all") {
+
+    data <- data |>
+      dplyr::filter(decision == rule_decision)
+
     boot_sample_size <- nrow(data)
 
     decision_boot <- data.frame(
@@ -42,7 +45,12 @@ calculate_boot_result <- function(
     )
 
     sample_to_match <- decision_boot
+
   } else if (bootstrap == "decision") {
+
+    data <- data |>
+      dplyr::filter(decision == rule_decision)
+
     boot_sample_size <- sum(data$treatment != data$decision)
 
     decision_boot <- data.frame(
@@ -59,9 +67,16 @@ calculate_boot_result <- function(
       dplyr::filter(treatment == decision) |>
       dplyr::select(rowId) |>
       dplyr::bind_rows(decision_boot)
+
   } else if (bootstrap == "leftout") {
 
-    sample_to_match <- decision_boot
+    result <- calculate_boot_result_leftout(
+      data = data,
+      rule_decision = rule_decision
+    )
+
+    return(result)
+
   }
 
   estimand <- ifelse(unique(data$decision) == 0, "ATT", "ATC")
@@ -107,14 +122,16 @@ calculate_boot_result <- function(
 
 calculate_boot_result_leftout <- function(
   data,
-  n_decision,
-  disc_treatment,
-  conc_treatment
+  rule_decision
 ) {
+
+  n_decision = sum(data$decision == rule_decision)
 
   decision_boot <- data.frame(
     rowId = sample(
-      x = data |> dplyr::pull(rowId),
+      x = data |>
+        dplyr::filter(decision == rule_decision) |>
+        dplyr::pull(rowId),
       size = n_decision,
       replace = TRUE
     )
@@ -122,11 +139,13 @@ calculate_boot_result_leftout <- function(
 
   disc_row_ids <- decision_boot |>
     dplyr::left_join(data, by = "rowId") |>
-    dplyr::filter(treatment == disc_treatment) |>
+    dplyr::filter(treatment != rule_decision) |>
     dplyr::pull(rowId)
 
   leftout_row_ids <- setdiff(
-    data$rowId,
+    data |>
+      dplyr::filter(decision == rule_decision) |>
+      dplyr::pull(rowId),
     unique(decision_boot$rowId)
   )
 
@@ -135,7 +154,7 @@ calculate_boot_result_leftout <- function(
       data,
       by = "rowId"
     ) |>
-    dplyr::filter(treatment == disc_treatment) |>
+    dplyr::filter(treatment != rule_decision) |>
     dplyr::pull(rowId) |>
     match_with_leftout(
       analysis_data = data,
@@ -144,7 +163,7 @@ calculate_boot_result_leftout <- function(
 
   overall_outcome_conc <- decision_boot |>
     dplyr::left_join(data, by = "rowId") |>
-    dplyr::filter(treatment == decision) |>
+    dplyr::filter(treatment == rule_decision) |>
     dplyr::group_by(treatment) |>
     dplyr::summarise(
       average_outcome = mean(outcome),
@@ -157,7 +176,7 @@ calculate_boot_result_leftout <- function(
     mean()
 
   overall_outcome <- data.frame(
-    treatment = disc_treatment,
+    treatment = as.numeric(!(as.logical(rule_decision))),
     average_outcome = mean_outcome_disc,
     n_total = length(disc_row_ids)
   ) |>
@@ -188,7 +207,7 @@ match_with_leftout <- function(
   combined_data <- analysis_data |>
     dplyr::filter(
       rowId %in% leftout_row_ids,
-      treatment == decision
+      treatment == conc_decision
     ) |>
     dplyr::bind_rows(
       data.frame(
