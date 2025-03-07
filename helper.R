@@ -217,14 +217,13 @@ match_with_leftout <- function(
     )
 
   matching <- MatchIt::matchit(
-    # treatment ~ fitted_ps,
     treatment ~ x1 + x2 + x3 + x4 + x5 + x6 + x7 + x8 + x9 + x10,
     data = combined_data,
     estimand = estimand,
-    distance = "glm",
+    distance = "mahalanobis",
     ratio = 1,
     replace = TRUE,
-    caliper = .1,
+    # caliper = .1,
     ...
   )
 

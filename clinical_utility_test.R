@@ -54,7 +54,7 @@ for (i in 1:n_replications) {
   message("\n")
   message(rep("-", 80))
   message("\n")
-  message("Bootstrap: all")
+  message(crayon::italic("Bootstrap: all"))
   message("Computing clinical utility for decision: treat")
 
   clinical_utility_treat <- analysis_data |>
@@ -84,7 +84,7 @@ for (i in 1:n_replications) {
   message("\n")
   message(rep("-", 80))
   message("\n")
-  message("Bootstrap: decision")
+  message(crayon::italic("Bootstrap: decision"))
   message("Computing clinical utility for decision: treat")
 
   clinical_utility_treat <- analysis_data |>
@@ -116,7 +116,7 @@ for (i in 1:n_replications) {
   message("\n")
   message(rep("-", 80))
   message("\n")
-  message("Bootstrap: leftout")
+  message(crayon::italic("Bootstrap: leftout"))
   message("Computing clinical utility for decision: treat")
 
   clinical_utility_treat <- analysis_data |>
