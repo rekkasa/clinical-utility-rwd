@@ -233,3 +233,118 @@ match_with_leftout <- function(
     dplyr::filter(treatment == decision) |>
     dplyr::pull(rowId)
 }
+
+
+compute_clinical_utility <- function(data) {
+
+  ps_model <- MatchIt::matchit(
+    data = data,
+    formula = treatment ~ x1 + x2 + x3 + x4 + x5 + x6 + x7 + x8 + x9 + x10,
+    estimand = "ATT",
+    distance = "glm",
+    method = "subclass",
+    subclass = 5
+  )
+
+  matched_data <- MatchIt::match_data(ps_model)
+
+  average_treatment_effect <- matched_data |>
+    dplyr::group_by(subclass) |>
+    tidyr::nest() |>
+    dplyr::mutate(
+      outcome_model = purrr::map(
+        data,
+        glm,
+        formula = outcome ~ treatment,
+        family = "binomial"
+      )
+    ) |>
+    dplyr::mutate(
+      treatment_effect = purrr::map_dbl(
+        outcome_model,
+        function(x) {
+          cf <- coefficients(x)
+          return(cf["treatment"])
+        }
+      )
+    ) |>
+    dplyr::pull(treatment_effect) |>
+    exp() |>
+    mean()
+
+
+  .impute_counterfactual <- function(
+    data,
+    actual_treatment,
+    average_treatment_effect
+  ) {
+
+    if (actual_treatment == 0) {
+
+      data |>
+        dplyr::mutate(
+          counterfactual = rbinom(
+            n = nrow(data),
+            size = 1,
+            prob = plogis(fitted_risk + log(average_treatment_effect))
+          )
+        ) |>
+        dplyr::select(rowId, counterfactual)
+
+    } else if (actual_treatment == 1) {
+
+      data |>
+        dplyr::mutate(
+          counterfactual = rbinom(
+            n = nrow(data),
+            size = 1,
+            prob = plogis(fitted_risk)
+          )
+        ) |>
+        dplyr::select(rowId, counterfactual)
+
+    }
+  }
+
+  result <- data |>
+    dplyr::group_by(treatment) |>
+    tidyr::nest() |>
+    dplyr::mutate(
+      counterfactual = purrr::map(
+        data,
+        actual_treatment = treatment,
+        .impute_counterfactual,
+        average_treatment_effect = average_treatment_effect
+      )
+    ) |>
+    dplyr::select(-data) |>
+    tidyr::unnest(counterfactual) |>
+    dplyr::ungroup(treatment) |>
+    dplyr::select(-treatment) |>
+    dplyr::left_join(data, by = "rowId") |>
+    dplyr::mutate(
+      outcome_decision = as.numeric(treatment == decision) * outcome +
+        as.numeric(treatment != decision) * counterfactual
+    ) |>
+    dplyr::group_by(decision) |>
+    tidyr::nest() |>
+    dplyr::mutate(
+      n = purrr::map_dbl(data, nrow)
+    ) |>
+    dplyr::mutate(
+      average_outcome = purrr::map_dbl(
+        data,
+        function(x) {
+          x |>
+            dplyr::pull(outcome_decision) |>
+            mean()
+        }
+      )
+    ) |> 
+    dplyr::select(-data) |>
+    dplyr::ungroup(decision)
+
+  overall_decision = sum(result$n * result$average_outcome) / sum(result$n)
+  mean(data$outcome) - overall_decision
+
+}

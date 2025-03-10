@@ -1,6 +1,6 @@
 source("test.R")
 source("helper.R")
-future::plan(future::multisession, workers = 4)
+future::plan(future::multisession, workers = 19)
 
 cutoff_value <- .05
 
@@ -11,15 +11,17 @@ population <- readRDS("data/raw/population.rds")
 message("Read population")
 
 n_replications <- 2
-n_boot <- 2
+n_boot <- 200
 threshold_cu_all <- threshold_cu_decision <-
-  true_threshold_cu <- threshold_cu_leftout <- c(0, n_replications)
+  true_threshold_cu <- threshold_cu_leftout <-
+  threshold_risk_based <- c(0, n_replications)
 
 for (i in 1:n_replications) {
 
   message("\n")
   message(rep("=", 80))
   message(crayon::bold(paste("Iteration:", i)))
+
   analysis_data <- SimulateHte::runDataGeneration(
     databaseSettings = settings$databaseSettings,
     propensitySettings = settings$propensitySettings,
@@ -50,7 +52,16 @@ for (i in 1:n_replications) {
       fitted_risk = risk_model$linear.predictors,
       decision = as.numeric(plogis(fitted_risk) > cutoff_value)
     )
-  
+
+  message("\n")
+  message(rep("-", 80))
+  message("\n")
+  message(crayon::italic("Risk-based"))
+
+  threshold_risk_based[i] <- compute_clinical_utility(analysis_data)
+
+  message("\nComputed clinical utility for proposed rule")
+
   message("\n")
   message(rep("-", 80))
   message("\n")
@@ -170,6 +181,7 @@ for (i in 1:n_replications) {
 message("Saving results")
 readr::write_csv(
   x = data.frame(
+    risk_based = threshold_risk_based,
     boot_all = threshold_cu_all,
     boot_decision = threshold_cu_decision,
     boot_leftout = threshold_cu_leftout,
