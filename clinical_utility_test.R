@@ -1,6 +1,6 @@
 source("test.R")
 source("helper.R")
-future::plan(future::multisession, workers = 19)
+future::plan(future::multisession, workers = 20)
 
 cutoff_value <- .05
 
@@ -10,7 +10,7 @@ settings$databaseSettings$numberOfObservations <- 1e4
 population <- readRDS("data/raw/population.rds")
 message("Read population")
 
-n_replications <- 2
+n_replications <- 50
 n_boot <- 200
 threshold_cu_all <- threshold_cu_decision <-
   true_threshold_cu <- threshold_cu_leftout <-
@@ -58,7 +58,17 @@ for (i in 1:n_replications) {
   message("\n")
   message(crayon::italic("Risk-based"))
 
-  threshold_risk_based[i] <- compute_clinical_utility(analysis_data)
+  res <- rep(0, 100)
+
+  res <- furrr::future_map_dbl(1:100, ~ {
+    analysis_data |>
+      compute_clinical_utility()
+  },
+  .progress = TRUE,
+  .options = furrr::furrr_options(seed = TRUE)
+  )
+
+  threshold_risk_based[i] <- mean(res)
 
   message("\nComputed clinical utility for proposed rule")
 

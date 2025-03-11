@@ -5,7 +5,8 @@ result |>
   dplyr::mutate(
     difference_perc_all = (boot_all - actual) / actual * 100,
     difference_perc_decision = (boot_decision - actual) / actual * 100,
-    difference_perc_leftout = (boot_leftout - actual) / actual * 100
+    difference_perc_leftout = (boot_leftout - actual) / actual * 100,
+    difference_perc_risk_based = (risk_based - actual) / actual * 100
   ) |>
   tidyr::pivot_longer(
     cols = tidyr::starts_with("difference_perc"),
