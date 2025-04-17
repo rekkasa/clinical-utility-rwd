@@ -1,14 +1,27 @@
-source("test.R")
-source("helper.R")
+source("R/test.R")
+source("R/helper.R")
 future::plan(future::multisession, workers = 20)
 
 cutoff_value <- .05
 
+message("Generating reference population...")
+population <- SimulateHte::runDataGeneration(
+  databaseSettings = settings$databaseSettings,
+  propensitySettings = settings$propensitySettings,
+  baselineRiskSettings = settings$baselineRiskSettings,
+  treatmentEffectSettings = settings$treatmentEffectSettings
+)
+message("Finished")
+message(paste("Generated reference population of size:", nrow(population)))
+
 # Estimate propensity scores and risk
 settings$databaseSettings$numberOfObservations <- 1e4
-
-population <- readRDS("data/raw/population.rds")
-message("Read population")
+message(
+  paste(
+    "Set simulation population size to:",
+    settings$databaseSettings$numberOfObservations
+  )
+)
 
 n_replications <- 50
 n_boot <- 200
@@ -62,7 +75,7 @@ for (i in 1:n_replications) {
 
   res <- furrr::future_map_dbl(1:100, ~ {
     analysis_data |>
-      compute_clinical_utility()
+      compute_constant_effect()
   },
   .progress = TRUE,
   .options = furrr::furrr_options(seed = TRUE)

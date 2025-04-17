@@ -1,4 +1,3 @@
-#!/usr/bin/env Rscript
 library(SimulateHte)
  analysisIds <- readr::read_csv(
    "https://raw.githubusercontent.com/mi-erasmusmc/HteSimulationRCT/main/data/processed/analysisIds.csv",

@@ -235,7 +235,7 @@ match_with_leftout <- function(
 }
 
 
-compute_clinical_utility <- function(data) {
+compute_constant_effect <- function(data) {
 
   ps_model <- MatchIt::matchit(
     data = data,
