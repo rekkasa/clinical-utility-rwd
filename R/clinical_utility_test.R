@@ -2,7 +2,7 @@ source("R/test.R")
 source("R/helper.R")
 future::plan(future::multisession, workers = 20)
 
-cutoff_value <- .05
+cutoff_value <- .1
 
 message("Generating reference population...")
 population <- SimulateHte::runDataGeneration(
@@ -176,7 +176,8 @@ for (i in 1:n_replications) {
 
   mean(analysis_data$outcome) - threshold_clinical_utility
 
-  threshold_cu_leftout[i] <- mean(analysis_data$outcome) - threshold_clinical_utility
+  threshold_cu_leftout[i] <- mean(analysis_data$outcome) -
+    threshold_clinical_utility
 
   message("\nComputed clinical utility for proposed rule")
 
